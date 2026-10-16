@@ -1,122 +1,285 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppShell } from './components/AppShell.jsx';
+import { LandingPage } from './pages/LandingPage.jsx';
+import { DashboardPage } from './pages/DashboardPage.jsx';
+import { JobsPage } from './pages/JobsPage.jsx';
+import { JobDetailPage } from './pages/JobDetailPage.jsx';
+import { RepositoriesPage } from './pages/RepositoriesPage.jsx';
+import { ConnectRepoPage } from './pages/ConnectRepoPage.jsx';
+import { RepoExplorerPage } from './pages/RepoExplorerPage.jsx';
+import { AssessmentWorkspacePage } from './pages/AssessmentWorkspacePage.jsx';
+import { EvidenceExplorerPage } from './pages/EvidenceExplorerPage.jsx';
+import { SkillGapPage } from './pages/SkillGapPage.jsx';
+import { AssessmentHistoryPage } from './pages/AssessmentHistoryPage.jsx';
+import { ActivityTimelinePage } from './pages/ActivityTimelinePage.jsx';
+import { SettingsPage } from './pages/SettingsPage.jsx';
+import { subscribeToEvents } from './services/sse.js';
 
-function App() {
-  const [count, setCount] = useState(0)
+export function App() {
+  const [latestEvent, setLatestEvent] = useState(null);
+  const [activeContext, setActiveContext] = useState({
+    assessment: null,
+    job: null,
+    repo: null,
+  });
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToEvents((event) => {
+      setLatestEvent(event);
+      setRefreshTrigger((prev) => prev + 1);
+    });
+    return () => unsubscribe?.();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshTrigger((prev) => prev + 1);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <BrowserRouter>
+      <Routes>
+        {/* Marketing / Landing Page */}
+        <Route path="/" element={<LandingPage />} />
 
-      <div className="ticks"></div>
+        {/* Dashboard Overview */}
+        <Route
+          path="/dashboard"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <DashboardPage
+                latestEvent={latestEvent}
+                onSetActiveContext={setActiveContext}
+              />
+            </AppShell>
+          }
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {/* Job Discovery & Requirements */}
+        <Route
+          path="/jobs"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <JobsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/jobs/:id"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <JobDetailPage />
+            </AppShell>
+          }
+        />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* Repository Management & Code Explorer */}
+        <Route
+          path="/repositories"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <RepositoriesPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/repositories/connect"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <ConnectRepoPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/repositories/:id"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <RepoExplorerPage />
+            </AppShell>
+          }
+        />
+
+        {/* Detailed Assessment Workspace */}
+        <Route
+          path="/assessments/:id"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <AssessmentWorkspacePage />
+            </AppShell>
+          }
+        />
+        <Route path="/assessments" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Evidence Explorer */}
+        <Route
+          path="/assessments/:id/evidence"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <EvidenceExplorerPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/evidence"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <EvidenceExplorerPage />
+            </AppShell>
+          }
+        />
+
+        {/* Skill Gap Analysis & Roadmap */}
+        <Route
+          path="/assessments/:id/gaps"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <SkillGapPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/gaps"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <SkillGapPage />
+            </AppShell>
+          }
+        />
+
+        {/* Assessment Revisions & History */}
+        <Route
+          path="/assessments/:id/history"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <AssessmentHistoryPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/history"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <AssessmentHistoryPage />
+            </AppShell>
+          }
+        />
+
+        {/* Activity Timeline Stream */}
+        <Route
+          path="/activity"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <ActivityTimelinePage latestEvent={latestEvent} />
+            </AppShell>
+          }
+        />
+
+        {/* Settings & Integration Health */}
+        <Route
+          path="/settings"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <SettingsPage />
+            </AppShell>
+          }
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

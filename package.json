@@ -1,26 +1,21 @@
 {
   "name": "skillproof-ai",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
-  },
-  "keywords": [],
+  "description": "SkillProof AI — Your portfolio is your proof. AI Career Coach with evidence-backed skill verification and automated repo change detection.",
   "type": "module",
-  "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^18.0.8",
-    "express": "^5.3.0",
-    "express-rate-limit": "^8.7.1",
-    "helmet": "^8.3.0",
-    "mongoose": "^9.11.2",
-    "octokit": "^5.0.5",
-    "zod": "^4.6.7"
+  "scripts": {
+    "server": "npm --prefix server run dev",
+    "server:start": "npm --prefix server start",
+    "client": "npm --prefix client run dev",
+    "test": "npm --prefix server test"
   },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  }
+  "keywords": [
+    "ai",
+    "career-coach",
+    "github",
+    "portfolio",
+    "skills-verification"
+  ],
+  "author": "",
+  "license": "MIT"
 }
