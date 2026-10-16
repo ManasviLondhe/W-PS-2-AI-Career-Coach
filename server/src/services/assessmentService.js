@@ -3,6 +3,7 @@ import { githubService } from './githubService.js';
 import { EvidenceExtractor } from './evidenceExtractor.js';
 import { ScoringService } from './scoringService.js';
 import { AiCoachService } from './aiCoachService.js';
+import { SkillGapAnalysisService } from './skillGapAnalysisService.js';
 
 export class AssessmentService {
   /**
@@ -167,7 +168,21 @@ export class AssessmentService {
 
     await assessment.save();
 
-    // 10. Update repository tracked state
+    // 10. Mark any existing skill-gap recommendations for this job+repo as stale,
+    //     since a newer assessment revision now supersedes them.
+    //     This is a best-effort operation — failure here does not fail the assessment.
+    try {
+      await SkillGapAnalysisService.markRecommendationsStale(
+        job._id.toString(),
+        repo._id.toString(),
+        assessment._id.toString(),
+        nextRevision
+      );
+    } catch (staleErr) {
+      console.warn(`[AssessmentService] Failed to mark recommendations stale: ${staleErr.message}`);
+    }
+
+    // 11. Update repository tracked state
     repo.lastSuccessfullyAnalyzedSha = commitSha;
     repo.latestObservedSha = commitSha;
     repo.lastAnalysisTimestamp = new Date();

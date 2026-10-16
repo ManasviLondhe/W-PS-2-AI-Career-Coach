@@ -8,6 +8,7 @@ import { jobRoutes } from './routes/jobRoutes.js';
 import { repositoryRoutes } from './routes/repositoryRoutes.js';
 import { assessmentRoutes } from './routes/assessmentRoutes.js';
 import { activityRoutes } from './routes/activityRoutes.js';
+import { recommendationRoutes } from './routes/recommendationRoutes.js';
 import { RepositoryController } from './controllers/repositoryController.js';
 
 export const app = express();
@@ -41,6 +42,7 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/repositories', repositoryRoutes);
 app.use('/api/assessments', assessmentRoutes);
 app.use('/api', activityRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 
 // Catch-all 404
 app.use((req, res) => {

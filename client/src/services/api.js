@@ -64,3 +64,24 @@ export const activityApi = {
   getByAssessment: (assessmentId) => api.get(`/activity/${assessmentId}`),
   getHealth: () => api.get('/health'),
 };
+
+export const recommendationsApi = {
+  // Generate (or refresh) recommendations for an assessment
+  generate: (assessmentId, forceRegenerate = false) =>
+    api.post('/recommendations/generate', { assessmentId, forceRegenerate }),
+
+  // Get all recommendations for a specific assessment
+  byAssessment: (assessmentId) =>
+    api.get(`/recommendations/by-assessment/${assessmentId}`),
+
+  // List recommendations with optional filters
+  list: (params) => api.get('/recommendations', { params }),
+
+  // Get a single recommendation
+  get: (id) => api.get(`/recommendations/${id}`),
+
+  // Update task progress (does NOT change skill assessment)
+  updateProgress: (id, taskStatus, taskNotes = '') =>
+    api.patch(`/recommendations/${id}/progress`, { taskStatus, taskNotes }),
+};
+
