@@ -26,7 +26,11 @@ api.interceptors.response.use(
 export const jobApi = {
   list: (params) => api.get('/jobs', { params }),
   get: (id) => api.get(`/jobs/${id}`),
+  analyzeUrl: (url) => api.post('/jobs/analyze-url', { url }),
+  analyzeText: (data) => api.post('/jobs/analyze-text', data),
   import: (data) => api.post('/jobs/import', data),
+  update: (id, data) => api.put(`/jobs/${id}`, data),
+  retryAnalysis: (id) => api.post(`/jobs/${id}/retry-analysis`),
   extractSkills: (id) => api.post(`/jobs/${id}/extract-skills`),
   delete: (id) => api.delete(`/jobs/${id}`),
 };
