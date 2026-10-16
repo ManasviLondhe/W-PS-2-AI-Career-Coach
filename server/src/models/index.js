@@ -3,3 +3,4 @@ export { Repository } from './Repository.js';
 export { Evidence } from './Evidence.js';
 export { Assessment } from './Assessment.js';
 export { ChangeEvent } from './ChangeEvent.js';
+export { PortfolioScan } from './PortfolioScan.js';

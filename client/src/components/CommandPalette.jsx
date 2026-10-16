@@ -15,6 +15,7 @@ import {
   X,
   ArrowRight,
 } from 'lucide-react';
+import { GithubIcon } from './GithubIcon.jsx';
 
 export function CommandPalette({ isOpen, onClose, onOpenImportJob, onOpenTrackRepo, onPollCommits }) {
   const [query, setQuery] = useState('');
@@ -49,6 +50,13 @@ export function CommandPalette({ isOpen, onClose, onOpenImportJob, onOpenTrackRe
       desc: 'Discover and import roles with verified source URLs',
       icon: <Briefcase size={16} />,
       action: () => { navigate('/jobs'); onClose(false); },
+    },
+    {
+      group: 'Navigation',
+      label: 'GitHub Portfolio Analysis',
+      desc: 'Scan GitHub repositories, choose branches & extract verified skills',
+      icon: <GithubIcon size={16} />,
+      action: () => { navigate('/portfolio-analysis'); onClose(false); },
     },
     {
       group: 'Navigation',
