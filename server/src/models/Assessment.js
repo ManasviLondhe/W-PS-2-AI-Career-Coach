@@ -22,6 +22,11 @@ const AssessmentSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    inspectedScope: {
+      files: [{ type: String, trim: true }],
+      skippedFiles: [{ type: String, trim: true }],
+      limitations: { type: String, default: '' },
+    },
     skillResults: [
       {
         skill: { type: String, required: true },

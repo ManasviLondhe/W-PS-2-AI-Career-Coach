@@ -40,6 +40,25 @@ public class PaymentService {
     assert.ok(ev.lineRange.end > ev.lineRange.start);
   });
 
+  test('produces deterministic evidence IDs for the same snapshot and distinct IDs for different commits', () => {
+    const files = [
+      {
+        path: 'src/main/java/com/stripe/service/PaymentService.java',
+        content: `package com.stripe.service;\n\n@Service\npublic class PaymentService {}`,
+      },
+    ];
+
+    const first = EvidenceExtractor.extractEvidenceForSkill('Java', files, repoInfo);
+    const second = EvidenceExtractor.extractEvidenceForSkill('Java', files, repoInfo);
+    const otherCommit = EvidenceExtractor.extractEvidenceForSkill('Java', files, {
+      ...repoInfo,
+      commitSha: 'ffffffffffffffffffffffffffffffffffffffff',
+    });
+
+    assert.equal(first.evidenceItems[0].evidenceId, second.evidenceItems[0].evidenceId);
+    assert.notEqual(first.evidenceItems[0].evidenceId, otherCommit.evidenceItems[0].evidenceId);
+  });
+
   test('reports not_demonstrated with honest analyzed scope wording when skill absent', () => {
     const files = [
       {

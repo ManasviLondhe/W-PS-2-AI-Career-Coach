@@ -3,6 +3,7 @@ import { githubService } from './githubService.js';
 import { EvidenceExtractor } from './evidenceExtractor.js';
 import { ScoringService } from './scoringService.js';
 import { AiCoachService } from './aiCoachService.js';
+import { validateEvidenceItem } from './evidenceValidator.js';
 
 export class AssessmentService {
   /**
@@ -47,10 +48,13 @@ export class AssessmentService {
       .slice(0, 60);
 
     const retrievedFiles = [];
+    const skippedFiles = [];
     for (const item of filesToFetch) {
       const content = await githubService.getFileContent(repo.owner, repo.name, item.path, commitSha);
       if (content !== null) {
         retrievedFiles.push({ path: item.path, content });
+      } else {
+        skippedFiles.push(item.path);
       }
     }
 
@@ -68,7 +72,6 @@ export class AssessmentService {
       }
     }
 
-    const savedEvidenceDocs = [];
     const evidenceMap = {};
     const preliminaryResults = [];
 
@@ -81,37 +84,74 @@ export class AssessmentService {
       });
 
       const skillEvidenceIds = [];
+      const validEvidenceItems = [];
       for (const evItem of extraction.evidenceItems) {
+        let validatedEvidence;
+        try {
+          validatedEvidence = validateEvidenceItem(evItem, retrievedFiles, {
+            owner: repo.owner,
+            repo: repo.name,
+            commitSha,
+          });
+        } catch (validationError) {
+          console.warn(
+            `[AssessmentService] Skipping invalid evidence for ${skill}: ${validationError.message}`
+          );
+          continue;
+        }
+
         // Save to Evidence collection
-        let evDoc = await Evidence.findOne({ evidenceId: evItem.evidenceId });
+        let evDoc = await Evidence.findOne({
+          evidenceId: validatedEvidence.evidenceId,
+          repository: repo._id,
+          commitSha,
+        });
+        if (evDoc) {
+          // The scoped lookup prevents reusing a citation from another
+          // repository or commit.
+        }
+
         if (!evDoc) {
           evDoc = new Evidence({
-            evidenceId: evItem.evidenceId,
+            evidenceId: validatedEvidence.evidenceId,
             repository: repo._id,
-            commitSha: evItem.commitSha,
-            filePath: evItem.filePath,
-            lineRange: evItem.lineRange,
-            skill: evItem.skill,
-            evidenceType: evItem.evidenceType,
-            codeExcerpt: evItem.codeExcerpt,
-            explanation: evItem.explanation,
-            sourcePermalink: evItem.sourcePermalink,
-            confidence: evItem.confidence,
-            limitations: evItem.limitations,
+            commitSha: validatedEvidence.commitSha,
+            filePath: validatedEvidence.filePath,
+            lineRange: validatedEvidence.lineRange,
+            skill: validatedEvidence.skill,
+            evidenceType: validatedEvidence.evidenceType,
+            codeExcerpt: validatedEvidence.codeExcerpt,
+            explanation: validatedEvidence.explanation,
+            sourcePermalink: validatedEvidence.sourcePermalink,
+            confidence: validatedEvidence.confidence,
+            limitations: validatedEvidence.limitations,
           });
           await evDoc.save();
         }
-        savedEvidenceDocs.push(evDoc);
         evidenceMap[evDoc.evidenceId] = evDoc;
         skillEvidenceIds.push(evDoc.evidenceId);
+        validEvidenceItems.push(evDoc);
+      }
+
+      let status = extraction.status;
+      let confidence = extraction.confidence;
+      if (validEvidenceItems.length === 0) {
+        status = 'not_demonstrated';
+        confidence = 'high';
+      } else if (!validEvidenceItems.some((item) => item.confidence === 'high') && validEvidenceItems.length < 2) {
+        status = 'partially_demonstrated';
+        confidence = 'medium';
+      } else {
+        status = 'demonstrated';
+        confidence = 'high';
       }
 
       preliminaryResults.push({
         skill,
         classification,
-        status: extraction.status,
+        status,
         evidenceIds: skillEvidenceIds,
-        confidence: extraction.confidence,
+        confidence,
         explanation: extraction.explanation,
         limitations: extraction.limitations,
         recommendations: [],
@@ -131,8 +171,8 @@ export class AssessmentService {
       const insight = coachData.skillInsights?.find((si) => si.skill.toLowerCase() === pr.skill.toLowerCase());
       return {
         ...pr,
-        explanation: insight?.explanation || pr.explanation,
-        limitations: insight?.limitations || pr.limitations,
+        // AI recommendations are advisory; deterministic evidence remains
+        // authoritative for status, confidence, rationale, and scope.
         recommendations: insight?.recommendations || [],
       };
     });
@@ -154,10 +194,18 @@ export class AssessmentService {
       repository: repo._id,
       revisionNumber: nextRevision,
       commitSha,
+      inspectedScope: {
+        files: retrievedFiles.map((file) => file.path),
+        skippedFiles,
+        limitations:
+          skippedFiles.length > 0
+            ? `${skippedFiles.length} source file(s) could not be retrieved from the pinned commit.`
+            : 'All selected source files were retrieved from the pinned commit.',
+      },
       skillResults: finalSkillResults,
       coverageScore: scoreResult.coverageScore,
       scoringConfiguration: scoreResult.config,
-      limitations: coachData.overallSummary || scoreResult.explanation,
+      limitations: scoreResult.explanation,
       triggeringEvent: {
         type: triggeringEvent.type || 'initial',
         commitSha,

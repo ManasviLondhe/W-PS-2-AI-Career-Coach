@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { app } from '../../src/app.js';
 import { connectDatabase, disconnectDatabase } from '../../src/config/database.js';
 import { Job, Repository, Assessment } from '../../src/models/index.js';
+import { githubService } from '../../src/services/githubService.js';
 
 describe('SkillProof AI — Backend API Integration Tests', () => {
   let server;
@@ -103,5 +104,88 @@ describe('SkillProof AI — Backend API Integration Tests', () => {
     assert.ok(body.success);
     assert.ok(Array.isArray(body.data.changeEvents));
     assert.ok(Array.isArray(body.data.recentAssessments));
+  });
+
+  test('POST /api/assessments creates a snapshot-pinned assessment with validated evidence', async () => {
+    const job = await Job.create({
+      title: 'Backend Engineer',
+      employer: 'Snapshot Inc',
+      originalSourceUrl: 'https://example.com/job',
+      sourceType: 'manual_url',
+      sourceVerificationState: 'verified_url',
+      description: 'SQL and Java required.',
+      requiredSkills: ['SQL'],
+      preferredSkills: ['Java'],
+    });
+
+    const repo = await Repository.create({
+      owner: 'testowner',
+      name: 'payments-service',
+      fullName: 'testowner/payments-service',
+      url: 'https://github.com/testowner/payments-service',
+      defaultBranch: 'main',
+      trackingState: 'active',
+    });
+
+    const originalMethods = {
+      getLatestCommitSha: githubService.getLatestCommitSha,
+      getFileTree: githubService.getFileTree,
+      getFileContent: githubService.getFileContent,
+    };
+
+    githubService.getLatestCommitSha = async () => ({
+      sha: 'a1b2c3d4e5f678901234567890abcdef12345678',
+      message: 'Add SQL query',
+      author: 'test',
+      date: new Date().toISOString(),
+    });
+    githubService.getFileTree = async () => [
+      { path: 'database/queries.sql', type: 'blob' },
+      { path: 'src/index.js', type: 'blob' },
+    ];
+    githubService.getFileContent = async (owner, repoName, filePath) => {
+      if (filePath === 'database/queries.sql') {
+        return [
+          'CREATE TABLE invoices (',
+          '  id TEXT PRIMARY KEY',
+          ');',
+          '',
+          'SELECT id FROM invoices WHERE id = $1;',
+        ].join('\n');
+      }
+      return 'console.log("hello");';
+    };
+
+    try {
+      const createRes = await fetch(`${baseUrl}/assessments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job._id.toString(), repositoryId: repo._id.toString() }),
+      });
+
+      assert.equal(createRes.status, 201);
+      const createBody = await createRes.json();
+      assert.ok(createBody.success);
+      assert.equal(createBody.data.commitSha, 'a1b2c3d4e5f678901234567890abcdef12345678');
+
+      const getRes = await fetch(`${baseUrl}/assessments/${createBody.data._id}`);
+      assert.equal(getRes.status, 200);
+      const getBody = await getRes.json();
+      assert.ok(getBody.success);
+      assert.ok(getBody.data.evidenceMap);
+
+      const sqlSkill = getBody.data.skillResults.find((sr) => sr.skill === 'SQL');
+      assert.ok(sqlSkill);
+      assert.ok(sqlSkill.evidenceIds.length >= 1);
+
+      const sqlEvidence = getBody.data.evidenceMap[sqlSkill.evidenceIds[0]];
+      assert.ok(sqlEvidence);
+      assert.equal(sqlEvidence.commitSha, 'a1b2c3d4e5f678901234567890abcdef12345678');
+      assert.match(sqlEvidence.sourcePermalink, /https:\/\/github\.com\/testowner\/payments-service\/blob\/a1b2c3d4e5f678901234567890abcdef12345678\/database\/queries\.sql#L1-L5/);
+    } finally {
+      githubService.getLatestCommitSha = originalMethods.getLatestCommitSha;
+      githubService.getFileTree = originalMethods.getFileTree;
+      githubService.getFileContent = originalMethods.getFileContent;
+    }
   });
 });

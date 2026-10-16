@@ -77,7 +77,11 @@ export class AssessmentController {
         if (sr.evidenceIds) allEvIds.push(...sr.evidenceIds);
       }
 
-      const evidences = await Evidence.find({ evidenceId: { $in: allEvIds } }).lean();
+      const evidences = await Evidence.find({
+        evidenceId: { $in: allEvIds },
+        repository: assessment.repository._id || assessment.repository,
+        commitSha: assessment.commitSha,
+      }).lean();
       const evidenceMap = {};
       for (const ev of evidences) {
         evidenceMap[ev.evidenceId] = ev;
@@ -160,7 +164,11 @@ export class AssessmentController {
         }
       }
 
-      const evidences = await Evidence.find({ evidenceId: { $in: allEvIds } }).lean();
+      const repositoryId = current.repository._id || current.repository;
+      const evidences = await Evidence.find({
+        evidenceId: { $in: allEvIds },
+        repository: repositoryId,
+      }).lean();
       const evidenceMap = {};
       for (const ev of evidences) {
         evidenceMap[ev.evidenceId] = ev;
@@ -237,7 +245,11 @@ export class AssessmentController {
         if (sr.evidenceIds) allEvIds.push(...sr.evidenceIds);
       }
 
-      const evidences = await Evidence.find({ evidenceId: { $in: allEvIds } }).lean();
+      const evidences = await Evidence.find({
+        evidenceId: { $in: allEvIds },
+        repository: assessment.repository._id || assessment.repository,
+        commitSha: assessment.commitSha,
+      }).lean();
       const evidenceMap = {};
       for (const ev of evidences) {
         evidenceMap[ev.evidenceId] = ev;
