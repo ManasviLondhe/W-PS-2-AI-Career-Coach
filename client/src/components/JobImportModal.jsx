@@ -558,6 +558,27 @@ export function JobImportModal({ onClose, onSuccess, initialUrl = '' }) {
               )}
             </div>
 
+            {/* Extraction Engine Limitations / Transparency Notice */}
+            {analyzedData?.limitations && (
+              <div
+                style={{
+                  background: 'var(--bg-subtle)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '0.55rem 0.85rem',
+                  fontSize: '0.74rem',
+                  color: 'var(--text-secondary)',
+                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <Info size={14} style={{ flexShrink: 0, color: 'var(--accent-primary)' }} />
+                <span>{analyzedData.limitations}</span>
+              </div>
+            )}
+
             {/* Extracted Role Summary */}
             {reviewSummary && (
               <div style={{ marginBottom: '1.25rem' }}>
@@ -576,10 +597,54 @@ export function JobImportModal({ onClose, onSuccess, initialUrl = '' }) {
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                   Extracted Skills & Requirements ({requirements.length})
                 </div>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  Click badge to toggle Required ⇄ Preferred
-                </span>
+                {requirements.length > 0 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Click badge to toggle Required ⇄ Preferred
+                  </span>
+                )}
               </div>
+
+              {/* Zero-Skills Honest Warning / Guidance */}
+              {requirements.length === 0 && (
+                <div
+                  style={{
+                    background: 'var(--warning-subtle, #FFFBEB)',
+                    border: '1px solid var(--warning-border, #FDE68A)',
+                    color: '#92400E',
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.82rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                    No standard technical skills were detected from this posting
+                  </div>
+                  <div style={{ fontSize: '0.78rem', lineHeight: 1.5 }}>
+                    The extracted text might lack specific technology keywords, or the employer formatted qualifications differently.
+                    You can add skills manually using the form below, retry with Gemini AI, or paste the text directly.
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleFallbackToPaste}
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: '0.76rem' }}
+                    >
+                      <FileText size={13} style={{ marginRight: '4px' }} />
+                      Paste Full Text Manually
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStage('input')}
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: '0.76rem' }}
+                    >
+                      Retry Analysis
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Required Skills */}
               <div style={{ marginBottom: '0.75rem' }}>
@@ -684,16 +749,24 @@ export function JobImportModal({ onClose, onSuccess, initialUrl = '' }) {
             </div>
 
             {/* Grounded Excerpts Preview */}
-            <div style={{ maxHeight: '140px', overflowY: 'auto', background: 'var(--code-panel-bg)', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1.25rem' }}>
-              <div style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', marginBottom: '0.35rem', fontWeight: 700 }}>
-                Grounded Excerpts from Posting Text:
+            <div style={{ maxHeight: '160px', overflowY: 'auto', background: 'var(--code-panel-bg)', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.7rem', color: '#94A3B8', textTransform: 'uppercase', marginBottom: '0.5rem', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Grounded Excerpts from Posting Text ({requirements.filter(r => r.source_excerpt).length} Grounded):</span>
+                <span style={{ fontSize: '0.68rem', color: '#64748B' }}>Verified Quotes</span>
               </div>
-              {requirements.slice(0, 5).map((r) => (
-                <div key={r.name} style={{ fontSize: '0.76rem', color: '#CBD5E1', marginBottom: '0.35rem', fontFamily: 'monospace' }}>
-                  <span style={{ color: '#38BDF8', fontWeight: 600 }}>{r.name}:</span>{' '}
-                  <span style={{ color: '#94A3B8' }}>"{r.source_excerpt || r.description}"</span>
+              {requirements.filter((r) => r.source_excerpt).map((r) => (
+                <div key={r.name} style={{ fontSize: '0.76rem', color: '#CBD5E1', marginBottom: '0.45rem', fontFamily: 'monospace', lineHeight: 1.45 }}>
+                  <span style={{ color: r.importance === 'required' ? '#38BDF8' : '#FBBF24', fontWeight: 600 }}>
+                    {r.name} [{r.importance}]:
+                  </span>{' '}
+                  <span style={{ color: '#94A3B8' }}>"{r.source_excerpt}"</span>
                 </div>
               ))}
+              {requirements.filter((r) => r.source_excerpt).length === 0 && (
+                <div style={{ fontSize: '0.76rem', color: '#94A3B8', fontStyle: 'italic' }}>
+                  No direct text quotes found. Skills may have been inferred from overall role context.
+                </div>
+              )}
             </div>
 
             {/* Modal Actions */}

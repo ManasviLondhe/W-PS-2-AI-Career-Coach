@@ -4,7 +4,7 @@
  * job text structure, titles, headings, and metadata.
  */
 
-export function extractJobFromHtml(html, sourceUrl) {
+export function extractJobFromHtml(html, sourceUrl = '') {
   if (!html || typeof html !== 'string') {
     return {
       title: '',
@@ -17,8 +17,9 @@ export function extractJobFromHtml(html, sourceUrl) {
   }
 
   // 1. Extract metadata from OpenGraph and standard tags
-  const ogTitleMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
-                       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+  const ogTitleMatch =
+    html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
   const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
 
@@ -31,21 +32,36 @@ export function extractJobFromHtml(html, sourceUrl) {
     title = decodeHtmlEntities(titleTagMatch[1]);
   }
 
-  // Clean title (remove common site suffixes like " | Careers", " - Greenhouse", " at Company")
-  title = title.replace(/\s*([|–—\-]|at)\s+.*(?:careers|jobs|lever|greenhouse|workday).*$/i, '').trim();
+  // Clean title (remove common site suffixes like " - Job ID: 1234", " | Careers", " - Greenhouse", " at Company")
+  title = title
+    .replace(/\s*-\s*Job ID:\s*\d+.*$/i, '')
+    .replace(/\s*([|–—\-]|at)\s+.*(?:careers|jobs|lever|greenhouse|workday|amazon).*$/i, '')
+    .trim();
 
   // 2. Extract employer / organization
-  const ogSiteNameMatch = html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ||
-                          html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+  const ogSiteNameMatch =
+    html.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ||
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
   let employer = '';
   if (ogSiteNameMatch) {
     employer = decodeHtmlEntities(ogSiteNameMatch[1]).trim();
   } else if (sourceUrl) {
     try {
       const u = new URL(sourceUrl);
-      const hostParts = u.hostname.replace(/^www\./, '').split('.');
-      if (hostParts.length >= 2) {
-        employer = hostParts[0].charAt(0).toUpperCase() + hostParts[0].slice(1);
+      const host = u.hostname.toLowerCase().replace(/^www\./, '');
+      if (host.includes('amazon.')) employer = 'Amazon';
+      else if (host.includes('google.')) employer = 'Google';
+      else if (host.includes('stripe.')) employer = 'Stripe';
+      else if (host.includes('figma.')) employer = 'Figma';
+      else if (host.includes('microsoft.')) employer = 'Microsoft';
+      else if (host.includes('meta.') || host.includes('facebook.')) employer = 'Meta';
+      else if (host.includes('apple.')) employer = 'Apple';
+      else if (host.includes('netflix.')) employer = 'Netflix';
+      else {
+        const parts = host.split('.');
+        if (parts.length >= 2) {
+          employer = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+        }
       }
     } catch {
       // ignore URL parse error
@@ -54,7 +70,9 @@ export function extractJobFromHtml(html, sourceUrl) {
 
   // 3. Extract location & employment type heuristics
   let location = '';
-  const locMatch = html.match(/(?:location|workplace|work location|office|based in)[\s\S]{0,30}?(?:[:\-–]\s*|\s+)(?:<strong>)?([A-Za-z0-9\s,\/\-]+(?:remote|hybrid|on-site|onsite|[A-Z]{2}|ca|ny|wa|tx|uk|london|san francisco|new york))/i);
+  const locMatch = html.match(
+    /(?:location|workplace|work location|office|based in)[\s\S]{0,35}?(?:[:\-–]\s*|\s+)(?:<strong>)?([A-Za-z0-9\s,\/\-]+(?:remote|hybrid|on-site|onsite|[A-Z]{2}|ca|ny|wa|tx|uk|india|london|san francisco|seattle|bengaluru|bangalore|new york))/i
+  );
   if (locMatch) {
     location = stripTags(locMatch[1]).slice(0, 80).trim();
   } else if (/remote/i.test(html.slice(0, 3000))) {
@@ -62,7 +80,7 @@ export function extractJobFromHtml(html, sourceUrl) {
   }
 
   let employmentType = '';
-  if (/intern(?:ship)?\b/i.test(title) || /intern(?:ship)?\b/i.test(html.slice(0, 3000))) {
+  if (/intern(?:ship)?\b/i.test(title) || /intern(?:ship)?\b/i.test(html.slice(0, 4000))) {
     employmentType = 'Internship';
   } else if (/full[\s-]time/i.test(html.slice(0, 5000))) {
     employmentType = 'Full-time';
@@ -83,17 +101,18 @@ export function extractJobFromHtml(html, sourceUrl) {
     .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
 
-  // 5. Structure block elements into newlines
+  // 5. Structure block elements into distinct newlines
   cleanHtml = cleanHtml
-    .replace(/<\/(p|div|section|article|li|tr|h[1-6])>/gi, '\n')
+    .replace(/<h[1-6][^>]*>/gi, '\n\n')
+    .replace(/<\/(p|div|section|article|li|tr|h[1-6]|dd|dt|blockquote)>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ');
+    .replace(/<li[^>]*>/gi, '\n• ');
 
-  // 6. Strip all remaining tags
+  // 6. Strip all remaining tags without deleting newlines
   let text = stripTags(cleanHtml);
   text = decodeHtmlEntities(text);
 
-  // Normalize excessive spacing
+  // Normalize excessive spacing while PRESERVING line structure
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -111,9 +130,17 @@ export function extractJobFromHtml(html, sourceUrl) {
   };
 }
 
+/**
+ * Strips HTML tags and collapses horizontal spaces while PRESERVING newlines!
+ */
 export function stripTags(input) {
   if (!input) return '';
-  return input.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return input
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t\r]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function decodeHtmlEntities(str) {
@@ -125,6 +152,7 @@ export function decodeHtmlEntities(str) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&times;/g, 'x')
     .replace(/&nbsp;/g, ' ')
     .replace(/&#x2F;/g, '/')
     .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
@@ -139,8 +167,13 @@ function isNoiseLine(line) {
     lower.startsWith('privacy policy') ||
     lower.startsWith('all rights reserved') ||
     lower.startsWith('terms of service') ||
+    lower.startsWith('skip to main content') ||
+    lower.startsWith('download our app') ||
+    lower.startsWith('join us on') ||
     lower === 'sign in' ||
     lower === 'log in' ||
-    lower === 'apply now'
+    lower === 'apply now' ||
+    /^•\s*•/.test(line) ||
+    line === '•'
   );
 }

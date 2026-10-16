@@ -12,8 +12,8 @@ const requirementItemSchema = z.object({
 });
 
 const extractedJobSchema = z.object({
-  title: z.string(),
-  employer: z.string(),
+  title: z.string().default('Software Engineer'),
+  employer: z.string().default('Organization'),
   location: z.string().optional().default(''),
   employmentType: z.string().optional().default(''),
   roleSummary: z.string().optional().default(''),
@@ -26,14 +26,17 @@ const extractedJobSchema = z.object({
 export class JobExtractionService {
   /**
    * Main entry point to extract structured job requirements.
-   * Uses Gemini/OpenAI if API keys are present; otherwise falls back to deterministic parsing.
+   * Attempts Gemini/OpenAI if configured; automatically falls back to deterministic parsing
+   * if LLM credentials are absent, invalid, or exhausted.
    */
   static async extractRequirements({ text, initialTitle = '', initialEmployer = '', sourceUrl = '' }) {
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       throw new Error('Cannot extract requirements: job posting text is empty.');
     }
 
-    // Try LLM if configured
+    let fallbackReason = '';
+
+    // Try Gemini if configured
     if (env.LLM_PROVIDER === 'gemini' && env.GEMINI_API_KEY) {
       try {
         const result = await this._extractWithGemini({ text, initialTitle, initialEmployer });
@@ -42,7 +45,8 @@ export class JobExtractionService {
           extractionMode: 'ai_llm',
         };
       } catch (err) {
-        console.warn(`[JobExtractor] Gemini extraction failed (${err.message}). Using deterministic fallback.`);
+        fallbackReason = `Gemini extraction failed (${err.message}). Extracted using deterministic rule-based analysis.`;
+        console.warn(`[JobExtractor] ${fallbackReason}`);
       }
     } else if (env.LLM_PROVIDER === 'openai' && env.OPENAI_API_KEY) {
       try {
@@ -52,12 +56,22 @@ export class JobExtractionService {
           extractionMode: 'ai_llm',
         };
       } catch (err) {
-        console.warn(`[JobExtractor] OpenAI extraction failed (${err.message}). Using deterministic fallback.`);
+        fallbackReason = `OpenAI extraction failed (${err.message}). Extracted using deterministic rule-based analysis.`;
+        console.warn(`[JobExtractor] ${fallbackReason}`);
       }
+    } else {
+      fallbackReason = 'Extracted using deterministic rule-based analysis. Configure GEMINI_API_KEY for advanced AI reasoning.';
     }
 
     // High-quality deterministic extraction fallback
-    const result = this._extractDeterministic({ text, initialTitle, initialEmployer, sourceUrl });
+    const result = this._extractDeterministic({
+      text,
+      initialTitle,
+      initialEmployer,
+      sourceUrl,
+      fallbackReason,
+    });
+
     return {
       ...result,
       extractionMode: 'deterministic',
@@ -85,7 +99,13 @@ export class JobExtractionService {
     });
 
     if (!res.ok) {
-      throw new Error(`Gemini API returned HTTP ${res.status}`);
+      const errText = await res.text();
+      let msg = `HTTP ${res.status}`;
+      try {
+        const jsonErr = JSON.parse(errText);
+        msg = jsonErr.error?.message || msg;
+      } catch {}
+      throw new Error(`Gemini API error: ${msg}`);
     }
 
     const data = await res.json();
@@ -124,7 +144,8 @@ export class JobExtractionService {
     });
 
     if (!res.ok) {
-      throw new Error(`OpenAI API returned HTTP ${res.status}`);
+      const errText = await res.text();
+      throw new Error(`OpenAI API error: HTTP ${res.status} ${errText.slice(0, 100)}`);
     }
 
     const data = await res.json();
@@ -168,8 +189,8 @@ Output JSON strictly adhering to:
   "qualifications": ["Array of explicit qualifications or experience requirements"],
   "requirements": [
     {
-      "name": "Canonical skill name (e.g. Java, SQL, React, Node.js, Docker, Testing, Git, REST APIs)",
-      "category": "Languages | Frameworks | Databases | DevOps | Quality Assurance | Architecture | etc.",
+      "name": "Canonical skill name (e.g. Java, Python, C++, SQL, Algorithms, Data Structures, Distributed Systems, AWS, Docker, Testing)",
+      "category": "Languages | Frameworks | Databases | Computer Science Fundamentals | Architecture / Infrastructure | DevOps | Quality Assurance",
       "importance": "required" or "preferred",
       "description": "What this role expects the candidate to do with this skill",
       "source_excerpt": "Exact sentence or bullet from posting text supporting this requirement",
@@ -184,7 +205,7 @@ Output JSON strictly adhering to:
   /**
    * High-quality deterministic rule-based extractor
    */
-  static _extractDeterministic({ text, initialTitle, initialEmployer, sourceUrl }) {
+  static _extractDeterministic({ text, initialTitle, initialEmployer, sourceUrl, fallbackReason = '' }) {
     const lines = text
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -192,8 +213,8 @@ Output JSON strictly adhering to:
 
     const PREFERRED_SECTION_PATTERNS = [
       /^preferred\b/i,
-      /nice to have/i,
       /preferred qualifications/i,
+      /nice to have/i,
       /bonus points/i,
       /plus/i,
       /what would be great/i,
@@ -203,18 +224,19 @@ Output JSON strictly adhering to:
     ];
 
     const REQUIRED_SECTION_PATTERNS = [
-      /requirements/i,
+      /^basic qualifications/i,
+      /^requirements\b/i,
       /required qualifications/i,
-      /what you will bring/i,
       /minimum qualifications/i,
-      /who you are/i,
       /core competencies/i,
-      /basic qualifications/i,
-      /what you need/i,
+      /basic requirements/i,
+      /what you will bring/i,
+      /who you are/i,
     ];
 
     const RESPONSIBILITY_SECTION_PATTERNS = [
-      /responsibilities/i,
+      /^responsibilities/i,
+      /key job responsibilities/i,
       /what you will do/i,
       /what you'll do/i,
       /the role/i,
@@ -222,12 +244,26 @@ Output JSON strictly adhering to:
       /your mission/i,
     ];
 
-    let currentSection = 'general';
+    const FOOTER_SECTION_PATTERNS = [
+      /^job details/i,
+      /^join us on/i,
+      /^find careers/i,
+      /^working at amazon/i,
+      /^working at/i,
+      /^about/i,
+      /^equal opportunity/i,
+    ];
+
+    let currentSection = 'intro';
     const responsibilities = [];
     const qualifications = [];
     const detectedSkillsMap = new Map();
 
     for (const line of lines) {
+      if (FOOTER_SECTION_PATTERNS.some((pat) => pat.test(line))) {
+        currentSection = 'footer';
+        continue;
+      }
       if (PREFERRED_SECTION_PATTERNS.some((pat) => pat.test(line))) {
         currentSection = 'preferred';
         continue;
@@ -241,11 +277,22 @@ Output JSON strictly adhering to:
         continue;
       }
 
-      if (currentSection === 'responsibilities' && (line.startsWith('•') || line.startsWith('-') || line.length > 25)) {
-        if (responsibilities.length < 8) responsibilities.push(line.replace(/^[•\-]\s*/, ''));
+      if (currentSection === 'footer') {
+        continue;
       }
-      if ((currentSection === 'required' || currentSection === 'preferred') && (line.startsWith('•') || line.startsWith('-'))) {
-        if (qualifications.length < 8) qualifications.push(line.replace(/^[•\-]\s*/, ''));
+
+      const isBullet = line.startsWith('•') || line.startsWith('-') || line.startsWith('*');
+      const cleanLine = line.replace(/^[•\-*]\s*/, '').trim();
+
+      if (currentSection === 'responsibilities' && (isBullet || cleanLine.length > 25)) {
+        if (responsibilities.length < 8 && cleanLine.length > 10) {
+          responsibilities.push(cleanLine);
+        }
+      }
+      if ((currentSection === 'required' || currentSection === 'preferred') && isBullet) {
+        if (qualifications.length < 10 && cleanLine.length > 10) {
+          qualifications.push(cleanLine);
+        }
       }
 
       const lowerLine = line.toLowerCase();
@@ -253,36 +300,51 @@ Output JSON strictly adhering to:
       // Scan taxonomy
       for (const [canonical, meta] of Object.entries(SKILL_TAXONOMY)) {
         const matched = meta.synonyms.some((syn) => {
-          const regex = new RegExp(`(^|[^a-zA-Z0-9_#+])${escapeRegex(syn)}([^a-zA-Z0-9_#+]|$)`, 'i');
+          const escaped = escapeRegex(syn);
+          const regex = new RegExp(`(^|[^a-zA-Z0-9_#+])${escaped}([^a-zA-Z0-9_#+]|$)`, 'i');
           return regex.test(lowerLine);
         });
 
         if (matched) {
-          const isPreferredSection = currentSection === 'preferred';
+          const isExplicitRequired = currentSection === 'required';
+          const isExplicitPreferred = currentSection === 'preferred';
+
+          let importance = isExplicitRequired ? 'required' : 'preferred';
+          let confidence = isExplicitRequired || isExplicitPreferred ? 'high' : 'medium';
+
           const existing = detectedSkillsMap.get(canonical);
 
           if (!existing) {
             detectedSkillsMap.set(canonical, {
               name: canonical,
               category: meta.category,
-              importance: isPreferredSection ? 'preferred' : 'required',
+              importance,
               description: `Proficiency in ${canonical} as mentioned in the role posting.`,
-              source_excerpt: line.slice(0, 250),
-              confidence: isPreferredSection || currentSection === 'required' ? 'high' : 'medium',
+              source_excerpt: cleanLine.slice(0, 250),
+              confidence,
             });
-          } else if (!isPreferredSection && existing.importance === 'preferred') {
-            // Upgrade to required if subsequently mentioned in required section
-            existing.importance = 'required';
-            existing.source_excerpt = line.slice(0, 250);
-            existing.confidence = 'high';
+          } else {
+            // Upgrade importance if found in required section
+            if (isExplicitRequired) {
+              existing.importance = 'required';
+              existing.source_excerpt = cleanLine.slice(0, 250);
+              existing.confidence = 'high';
+            } else if (isExplicitPreferred && existing.confidence === 'medium') {
+              existing.importance = 'preferred';
+              existing.source_excerpt = cleanLine.slice(0, 250);
+              existing.confidence = 'high';
+            }
           }
         }
       }
     }
 
-    // Role summary from introductory paragraphs
-    const introLines = lines.slice(0, 5).filter((l) => l.length > 40 && !l.includes(':'));
-    const roleSummary = introLines.length > 0 ? introLines.slice(0, 2).join(' ') : `Position for ${initialTitle || 'Software Engineer'}.`;
+    // Role summary from intro text
+    const introLines = lines.slice(0, 10).filter(
+      (l) => l.length > 50 && !l.includes(':') && !l.startsWith('•') && !l.startsWith('-')
+    );
+    const roleSummary =
+      introLines.length > 0 ? introLines.slice(0, 2).join(' ') : `Position for ${initialTitle || 'Software Engineer'}.`;
 
     const requirements = Array.from(detectedSkillsMap.values());
 
@@ -296,7 +358,7 @@ Output JSON strictly adhering to:
         responsibilities,
         qualifications,
         requirements,
-        limitations: 'Extracted using deterministic rule-based analysis. Configure GEMINI_API_KEY or OPENAI_API_KEY for advanced LLM reasoning.',
+        limitations: fallbackReason || 'Extracted using deterministic rule-based analysis.',
       },
       text
     );
@@ -321,14 +383,29 @@ Output JSON strictly adhering to:
         preferredSkills.push(canonical);
       }
 
+      // Check excerpt grounding against original text
+      let excerpt = req.source_excerpt ? req.source_excerpt.trim() : '';
+      let confidence = req.confidence || 'high';
+
+      if (!excerpt || !originalText.toLowerCase().includes(excerpt.toLowerCase().slice(0, 30))) {
+        // Try finding a matching line in originalText
+        const lines = originalText.split(/\r?\n/);
+        const matchingLine = lines.find((l) => l.toLowerCase().includes(canonical.toLowerCase()));
+        if (matchingLine) {
+          excerpt = matchingLine.replace(/^[•\-*]\s*/, '').trim().slice(0, 250);
+        } else {
+          confidence = 'medium';
+        }
+      }
+
       normalizedRequirements.push({
         name: canonical,
         category: req.category || SKILL_TAXONOMY[canonical]?.category || 'General',
         importance: req.importance,
         isRequired: isReq,
         description: req.description || `Experience with ${canonical}`,
-        source_excerpt: req.source_excerpt || '',
-        confidence: req.confidence || 'high',
+        source_excerpt: excerpt,
+        confidence,
       });
     }
 

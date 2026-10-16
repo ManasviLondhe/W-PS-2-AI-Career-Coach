@@ -32,7 +32,7 @@ export class JobService {
     // Generic HTTP fetch loop with SSRF-safe redirect validation
     while (redirectsCount <= MAX_REDIRECTS) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 18000);
 
       let response;
       try {
