@@ -26,7 +26,11 @@ api.interceptors.response.use(
 export const jobApi = {
   list: (params) => api.get('/jobs', { params }),
   get: (id) => api.get(`/jobs/${id}`),
+  analyzeUrl: (url) => api.post('/jobs/analyze-url', { url }),
+  analyzeText: (data) => api.post('/jobs/analyze-text', data),
   import: (data) => api.post('/jobs/import', data),
+  update: (id, data) => api.put(`/jobs/${id}`, data),
+  retryAnalysis: (id) => api.post(`/jobs/${id}/retry-analysis`),
   extractSkills: (id) => api.post(`/jobs/${id}/extract-skills`),
   delete: (id) => api.delete(`/jobs/${id}`),
 };
@@ -59,6 +63,20 @@ export const assessmentApi = {
   listEvidence: (params) => api.get('/assessments/evidence/list', { params }),
 };
 
+export const githubApi = {
+  getUser: (username) => api.get(`/github/users/${username}`),
+  getUserRepos: (username, params) => api.get(`/github/users/${username}/repos`, { params }),
+  getRepoDetails: (owner, repo) => api.get(`/github/repos/${owner}/${repo}`),
+  getRepoBranches: (owner, repo) => api.get(`/github/repos/${owner}/${repo}/branches`),
+  getRepoTree: (owner, repo, params) => api.get(`/github/repos/${owner}/${repo}/tree`, { params }),
+  startScan: (payload) => api.post('/github/scan', payload),
+  getScanStatus: (scanId) => api.get(`/github/scan/${scanId}`),
+  getScanEvidence: (scanId) => api.get(`/github/scan/${scanId}/evidence`),
+  getRepoHistory: (owner, repo) => api.get(`/github/repos/${owner}/${repo}/history`),
+  listScans: (params) => api.get('/github/scans', { params }),
+  getScanById: (id) => api.get(`/github/scans/${id}`),
+};
+
 export const activityApi = {
   getActivity: (params) => api.get('/activity', { params }),
   getByAssessment: (assessmentId) => api.get(`/activity/${assessmentId}`),
@@ -84,4 +102,3 @@ export const recommendationsApi = {
   updateProgress: (id, taskStatus, taskNotes = '') =>
     api.patch(`/recommendations/${id}/progress`, { taskStatus, taskNotes }),
 };
-

@@ -9,6 +9,7 @@ import { repositoryRoutes } from './routes/repositoryRoutes.js';
 import { assessmentRoutes } from './routes/assessmentRoutes.js';
 import { activityRoutes } from './routes/activityRoutes.js';
 import { recommendationRoutes } from './routes/recommendationRoutes.js';
+import { githubRoutes } from './routes/githubRoutes.js';
 import { RepositoryController } from './controllers/repositoryController.js';
 
 export const app = express();
@@ -31,11 +32,8 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 // Apply Rate Limiter on API routes
 app.use('/api', apiRateLimiter);
 
-// GitHub inspection routes
-app.get('/api/github/:owner/:repo', RepositoryController.inspectGitHubRepo);
-app.get('/api/github/:owner/:repo/files', RepositoryController.getRepoFiles);
-app.get('/api/github/:owner/:repo/commits', RepositoryController.getRepoCommits);
-app.get('/api/github/:owner/:repo/content', RepositoryController.getRepoFileContent);
+// GitHub portfolio analysis & repository routes
+app.use('/api/github', githubRoutes);
 
 // API Resource Routes
 app.use('/api/jobs', jobRoutes);

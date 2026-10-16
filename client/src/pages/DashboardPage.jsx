@@ -33,6 +33,7 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
+import { GithubIcon } from '../components/GithubIcon.jsx';
 
 export function DashboardPage({ latestEvent, onSetActiveContext }) {
   const [jobs, setJobs] = useState([]);
@@ -193,6 +194,16 @@ export function DashboardPage({ latestEvent, onSetActiveContext }) {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Link
+            to="/portfolio-analysis"
+            className="btn btn-secondary"
+            id="btn-portfolio-analysis-dash"
+            style={{ color: 'var(--primary)', borderColor: 'var(--primary-border)' }}
+          >
+            <GithubIcon size={15} color="var(--primary)" />
+            <span>Portfolio Analysis</span>
+          </Link>
+
           <button
             onClick={() => setTrackRepoOpen(true)}
             className="btn btn-secondary"

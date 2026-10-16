@@ -1,207 +1,185 @@
 import { Job } from '../models/Job.js';
-import { validateSafeUrl } from '../utils/ssrfProtection.js';
-import { extractSkillsFromText, normalizeSkillName, SKILL_TAXONOMY } from './skillDictionary.js';
+import { validateSafeUrl, validateRedirectUrl } from '../utils/ssrfProtection.js';
+import { extractJobFromHtml } from '../utils/htmlExtractor.js';
+import { JobExtractionService } from './jobExtractionService.js';
+import { normalizeSkillName, SKILL_TAXONOMY } from './skillDictionary.js';
+
+const MAX_RESPONSE_BYTES = 2.5 * 1024 * 1024; // 2.5 MB maximum
+const MAX_REDIRECTS = 4;
 
 export class JobService {
   /**
-   * Import job from an external URL (Greenhouse, Lever, or generic web page)
+   * Safe public URL fetcher with SSRF-safe redirect following and size limits.
    */
-  static async importFromUrl(rawUrl, manualTitle = '', manualEmployer = '') {
-    const parsedUrl = validateSafeUrl(rawUrl);
-    const href = parsedUrl.href;
+  static async fetchUrlContent(rawUrl) {
+    let currentUrl = validateSafeUrl(rawUrl);
+    let originalUrl = currentUrl.href;
+    let resolvedUrl = currentUrl.href;
+    let redirectsCount = 0;
 
-    // Check for Greenhouse
-    const ghMatch = href.match(/boards(?:\.greenhouse\.io|-api\.greenhouse\.io\/v1\/boards)\/([^/]+)\/jobs\/(\d+)/i);
+    // Check for Greenhouse API match
+    const ghMatch = originalUrl.match(/boards(?:\.greenhouse\.io|-api\.greenhouse\.io\/v1\/boards)\/([^/]+)\/jobs\/(\d+)/i);
     if (ghMatch) {
-      return this._importGreenhouseJob(ghMatch[1], ghMatch[2], href);
+      return this._fetchGreenhouse(ghMatch[1], ghMatch[2], originalUrl);
     }
 
-    // Check for Lever
-    const leverMatch = href.match(/(?:jobs\.lever\.co|api\.lever\.co\/v0\/postings)\/([^/]+)\/([a-f0-9-]+)/i);
+    // Check for Lever API match
+    const leverMatch = originalUrl.match(/(?:jobs\.lever\.co|api\.lever\.co\/v0\/postings)\/([^/]+)\/([a-f0-9-]+)/i);
     if (leverMatch) {
-      return this._importLeverJob(leverMatch[1], leverMatch[2], href);
+      return this._fetchLever(leverMatch[1], leverMatch[2], originalUrl);
     }
 
-    // Generic URL fetch
-    return this._importGenericUrl(parsedUrl, manualTitle, manualEmployer);
-  }
+    // Generic HTTP fetch loop with SSRF-safe redirect validation
+    while (redirectsCount <= MAX_REDIRECTS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 18000);
 
-  /**
-   * Import job via Greenhouse public API
-   */
-  static async _importGreenhouseJob(boardToken, jobId, originalUrl) {
-    const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(boardToken)}/jobs/${encodeURIComponent(jobId)}`;
-    try {
-      const response = await fetch(apiUrl, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Greenhouse API responded with HTTP ${response.status}`);
+      let response;
+      try {
+        response = await fetch(currentUrl.href, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SkillProofAI/1.0 (Public Job Requirement Parser)',
+            Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          redirect: 'manual', // Manual redirect control to validate each target against SSRF!
+          signal: controller.signal,
+        });
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === 'AbortError') {
+          throw new Error('Connection timed out while retrieving the job posting URL.');
+        }
+        throw new Error(`Failed to connect to job URL: ${fetchErr.message}`);
+      } finally {
+        clearTimeout(timeoutId);
       }
 
-      const data = await response.json();
-      const rawText = this._stripHtml(data.content || '');
-      const skills = extractSkillsFromText(`${data.title}\n${rawText}`);
+      // Handle Redirects safely
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        const redirectLocation = response.headers.get('location');
+        if (!redirectLocation) {
+          throw new Error(`Received redirect HTTP ${response.status} without Location header.`);
+        }
 
-      const job = new Job({
-        title: data.title || 'Software Engineer',
-        employer: boardToken.charAt(0).toUpperCase() + boardToken.slice(1),
-        originalSourceUrl: originalUrl,
-        sourceType: 'greenhouse',
-        sourceVerificationState: 'verified_api',
-        description: rawText,
-        requiredSkills: skills.requiredSkills,
-        preferredSkills: skills.preferredSkills,
-        normalizedRequirements: skills.normalizedRequirements,
-        retrievalTimestamp: new Date(),
-      });
-
-      await job.save();
-      return job;
-    } catch (err) {
-      throw new Error(`Failed to import Greenhouse job: ${err.message}`);
-    }
-  }
-
-  /**
-   * Import job via Lever public API
-   */
-  static async _importLeverJob(company, postingId, originalUrl) {
-    const apiUrl = `https://api.lever.co/v0/postings/${encodeURIComponent(company)}/${encodeURIComponent(postingId)}`;
-    try {
-      const response = await fetch(apiUrl, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Lever API responded with HTTP ${response.status}`);
+        // Validate redirect location against SSRF
+        currentUrl = validateRedirectUrl(redirectLocation, currentUrl.href);
+        resolvedUrl = currentUrl.href;
+        redirectsCount++;
+        continue;
       }
 
-      const data = await response.json();
-      const rawText = `${data.descriptionPlain || this._stripHtml(data.description || '')}\n${(data.lists || []).map((l) => `${l.text}\n${this._stripHtml(l.content)}`).join('\n')}`;
-      const skills = extractSkillsFromText(`${data.text}\n${rawText}`);
-
-      const job = new Job({
-        title: data.text || 'Software Engineer',
-        employer: company.charAt(0).toUpperCase() + company.slice(1),
-        originalSourceUrl: originalUrl,
-        sourceType: 'lever',
-        sourceVerificationState: 'verified_api',
-        description: rawText,
-        requiredSkills: skills.requiredSkills,
-        preferredSkills: skills.preferredSkills,
-        normalizedRequirements: skills.normalizedRequirements,
-        retrievalTimestamp: new Date(),
-      });
-
-      await job.save();
-      return job;
-    } catch (err) {
-      throw new Error(`Failed to import Lever job: ${err.message}`);
-    }
-  }
-
-  /**
-   * Generic URL fetch with HTML extraction and validation
-   */
-  static async _importGenericUrl(parsedUrl, manualTitle = '', manualEmployer = '') {
-    try {
-      const response = await fetch(parsedUrl.href, {
-        headers: {
-          'User-Agent': 'SkillProofAI/1.0 (Portfolio & Evidence Skill Verifier)',
-          Accept: 'text/html,application/xhtml+xml,text/plain',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-
       if (!response.ok) {
-        throw new Error(`Source returned HTTP ${response.status}`);
+        throw new Error(`Remote job source returned HTTP ${response.status} (${response.statusText || 'Error'}).`);
       }
 
-      const html = await response.text();
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const pageTitle = titleMatch ? titleMatch[1].trim() : '';
+      const contentType = response.headers.get('content-type') || '';
+      if (
+        !contentType.includes('text/html') &&
+        !contentType.includes('text/plain') &&
+        !contentType.includes('application/xhtml+xml') &&
+        !contentType.includes('application/json')
+      ) {
+        throw new Error(`Unsupported content type "${contentType}". Only public web postings are supported.`);
+      }
 
-      const rawText = this._stripHtml(html);
-      const skills = extractSkillsFromText(rawText);
+      const rawHtml = await response.text();
+      if (rawHtml.length > MAX_RESPONSE_BYTES) {
+        throw new Error('Remote posting exceeds maximum size limit (2.5 MB).');
+      }
 
-      // Determine employer and title
-      const employer = manualEmployer || parsedUrl.hostname.replace(/^www\./, '');
-      const title = manualTitle || pageTitle || 'Software Role';
+      const parsed = extractJobFromHtml(rawHtml, resolvedUrl);
 
-      const job = new Job({
-        title,
-        employer,
-        originalSourceUrl: parsedUrl.href,
+      return {
+        originalUrl,
+        resolvedUrl,
         sourceType: 'manual_url',
         sourceVerificationState: 'verified_url',
-        description: rawText.slice(0, 15000), // bounded storage
-        requiredSkills: skills.requiredSkills,
-        preferredSkills: skills.preferredSkills,
-        normalizedRequirements: skills.normalizedRequirements,
-        retrievalTimestamp: new Date(),
-      });
-
-      await job.save();
-      return job;
-    } catch (err) {
-      throw new Error(`Failed to import from URL: ${err.message}`);
-    }
-  }
-
-  /**
-   * Create a job from pasted text
-   */
-  static async createPastedJob({ title, employer, description, requiredSkills = [], preferredSkills = [] }) {
-    if (!title || !employer) {
-      throw new Error('Title and employer are required.');
-    }
-
-    let skills = extractSkillsFromText(description || '');
-
-    // Allow user to supply or supplement skills explicitly
-    if (requiredSkills.length > 0 || preferredSkills.length > 0) {
-      const explicitRequired = requiredSkills.map(normalizeSkillName).filter(Boolean);
-      const explicitPreferred = preferredSkills.map(normalizeSkillName).filter(Boolean);
-
-      const mergedRequired = Array.from(new Set([...skills.requiredSkills, ...explicitRequired]));
-      const mergedPreferred = Array.from(
-        new Set([...skills.preferredSkills, ...explicitPreferred].filter((s) => !mergedRequired.includes(s)))
-      );
-
-      const normalizedRequirements = [
-        ...mergedRequired.map((s) => ({
-          name: s,
-          category: SKILL_TAXONOMY[s]?.category || 'General',
-          isRequired: true,
-        })),
-        ...mergedPreferred.map((s) => ({
-          name: s,
-          category: SKILL_TAXONOMY[s]?.category || 'General',
-          isRequired: false,
-        })),
-      ];
-
-      skills = {
-        requiredSkills: mergedRequired,
-        preferredSkills: mergedPreferred,
-        normalizedRequirements,
+        title: parsed.title,
+        employer: parsed.employer,
+        location: parsed.location,
+        employmentType: parsed.employmentType,
+        description: parsed.description,
       };
     }
 
-    const job = new Job({
-      title: title.trim(),
-      employer: employer.trim(),
-      originalSourceUrl: '',
+    throw new Error('Too many redirects encountered while resolving job URL.');
+  }
+
+  /**
+   * Preview analysis from a public URL without immediate persistence.
+   */
+  static async analyzeUrl(rawUrl) {
+    const fetched = await this.fetchUrlContent(rawUrl);
+    const extracted = await JobExtractionService.extractRequirements({
+      text: fetched.description,
+      initialTitle: fetched.title,
+      initialEmployer: fetched.employer,
+      sourceUrl: fetched.resolvedUrl,
+    });
+
+    return {
+      ...fetched,
+      ...extracted,
+      title: extracted.title || fetched.title,
+      employer: extracted.employer || fetched.employer,
+      location: extracted.location || fetched.location,
+      employmentType: extracted.employmentType || fetched.employmentType,
+    };
+  }
+
+  /**
+   * Preview analysis from user-pasted text.
+   */
+  static async analyzeText({ text, title = '', employer = '' }) {
+    if (!text || text.trim().length === 0) {
+      throw new Error('Job description text cannot be empty.');
+    }
+
+    const extracted = await JobExtractionService.extractRequirements({
+      text: text.trim(),
+      initialTitle: title.trim(),
+      initialEmployer: employer.trim(),
+    });
+
+    return {
+      originalUrl: '',
+      resolvedUrl: '',
       sourceType: 'pasted',
       sourceVerificationState: 'unverified_pasted',
-      description: description || '',
-      requiredSkills: skills.requiredSkills,
-      preferredSkills: skills.preferredSkills,
-      normalizedRequirements: skills.normalizedRequirements,
+      description: text.trim(),
+      ...extracted,
+      title: extracted.title || title || 'Software Engineer',
+      employer: extracted.employer || employer || 'Organization',
+    };
+  }
+
+  /**
+   * Import and save a job from a public URL.
+   */
+  static async importFromUrl(rawUrl, manualTitle = '', manualEmployer = '') {
+    const analysis = await this.analyzeUrl(rawUrl);
+
+    const job = new Job({
+      title: manualTitle.trim() || analysis.title,
+      employer: manualEmployer.trim() || analysis.employer,
+      location: analysis.location || '',
+      employmentType: analysis.employmentType || '',
+      roleSummary: analysis.roleSummary || '',
+      originalSourceUrl: analysis.originalUrl,
+      resolvedSourceUrl: analysis.resolvedUrl,
+      sourceType: analysis.sourceType,
+      sourceVerificationState: analysis.sourceVerificationState,
+      description: analysis.description,
+      requiredSkills: analysis.requiredSkills,
+      preferredSkills: analysis.preferredSkills,
+      normalizedRequirements: analysis.normalizedRequirements,
+      responsibilities: analysis.responsibilities,
+      qualifications: analysis.qualifications,
+      extractionStatus: 'completed',
+      extractionMode: analysis.extractionMode,
+      extractionLimitations: analysis.limitations,
       retrievalTimestamp: new Date(),
     });
 
@@ -209,30 +187,203 @@ export class JobService {
     return job;
   }
 
-  static _stripHtml(html) {
-    return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ')
-      .trim();
+  /**
+   * Create and save a job from user-pasted text or confirmed analysis.
+   */
+  static async createPastedJob({
+    title,
+    employer,
+    location = '',
+    employmentType = '',
+    description = '',
+    roleSummary = '',
+    requiredSkills = [],
+    preferredSkills = [],
+    normalizedRequirements = [],
+    responsibilities = [],
+    qualifications = [],
+    sourceUrl = '',
+  }) {
+    if (!title || !employer) {
+      throw new Error('Title and employer are required.');
+    }
+
+    let finalRequired = requiredSkills;
+    let finalPreferred = preferredSkills;
+    let finalNormalized = normalizedRequirements;
+
+    // If normalized requirements not pre-supplied, run extraction
+    if (!finalNormalized || finalNormalized.length === 0) {
+      const extracted = await JobExtractionService.extractRequirements({
+        text: description || `${title}\n${employer}`,
+        initialTitle: title,
+        initialEmployer: employer,
+      });
+
+      finalRequired = Array.from(new Set([...finalRequired, ...extracted.requiredSkills]));
+      finalPreferred = Array.from(new Set([...finalPreferred, ...extracted.preferredSkills]));
+      finalNormalized = extracted.normalizedRequirements;
+    }
+
+    const job = new Job({
+      title: title.trim(),
+      employer: employer.trim(),
+      location: location.trim(),
+      employmentType: employmentType.trim(),
+      roleSummary: roleSummary.trim(),
+      originalSourceUrl: sourceUrl.trim(),
+      resolvedSourceUrl: sourceUrl.trim(),
+      sourceType: sourceUrl ? 'manual_url' : 'pasted',
+      sourceVerificationState: sourceUrl ? 'verified_url' : 'unverified_pasted',
+      description: description || '',
+      requiredSkills: finalRequired,
+      preferredSkills: finalPreferred,
+      normalizedRequirements: finalNormalized,
+      responsibilities,
+      qualifications,
+      extractionStatus: 'completed',
+      extractionMode: 'deterministic',
+      extractionLimitations: sourceUrl
+        ? 'Saved requirement verified against external URL.'
+        : 'User-provided job description; not independently verified against external URL.',
+      retrievalTimestamp: new Date(),
+    });
+
+    await job.save();
+    return job;
   }
 
   /**
-   * Re-extract skills from stored job description
+   * Update an existing job with user corrections.
+   */
+  static async updateJob(jobId, updates) {
+    const job = await Job.findById(jobId);
+    if (!job) throw new Error(`Job not found: ${jobId}`);
+
+    if (updates.title) job.title = updates.title.trim();
+    if (updates.employer) job.employer = updates.employer.trim();
+    if (updates.location !== undefined) job.location = updates.location.trim();
+    if (updates.employmentType !== undefined) job.employmentType = updates.employmentType.trim();
+    if (updates.roleSummary !== undefined) job.roleSummary = updates.roleSummary.trim();
+    if (updates.description !== undefined) job.description = updates.description;
+
+    if (Array.isArray(updates.requiredSkills)) {
+      job.requiredSkills = updates.requiredSkills.map(normalizeSkillName).filter(Boolean);
+    }
+    if (Array.isArray(updates.preferredSkills)) {
+      job.preferredSkills = updates.preferredSkills.map(normalizeSkillName).filter(Boolean);
+    }
+
+    if (Array.isArray(updates.normalizedRequirements)) {
+      job.normalizedRequirements = updates.normalizedRequirements.map((r) => ({
+        name: normalizeSkillName(r.name) || r.name,
+        category: r.category || SKILL_TAXONOMY[r.name]?.category || 'General',
+        isRequired: r.importance === 'required' || r.isRequired === true,
+        importance: r.importance || (r.isRequired ? 'required' : 'preferred'),
+        description: r.description || `Experience with ${r.name}`,
+        source_excerpt: r.source_excerpt || '',
+        confidence: r.confidence || 'high',
+      }));
+
+      // Keep required/preferred skill string arrays synchronized
+      job.requiredSkills = job.normalizedRequirements.filter((r) => r.isRequired).map((r) => r.name);
+      job.preferredSkills = job.normalizedRequirements.filter((r) => !r.isRequired).map((r) => r.name);
+    }
+
+    if (Array.isArray(updates.responsibilities)) job.responsibilities = updates.responsibilities;
+    if (Array.isArray(updates.qualifications)) job.qualifications = updates.qualifications;
+
+    await job.save();
+    return job;
+  }
+
+  /**
+   * Re-extract requirements and skills from stored job description.
    */
   static async reExtractSkills(jobId) {
     const job = await Job.findById(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
-    const skills = extractSkillsFromText(job.description || `${job.title}\n${job.employer}`);
-    job.requiredSkills = skills.requiredSkills;
-    job.preferredSkills = skills.preferredSkills;
-    job.normalizedRequirements = skills.normalizedRequirements;
+
+    const extracted = await JobExtractionService.extractRequirements({
+      text: job.description || `${job.title}\n${job.employer}`,
+      initialTitle: job.title,
+      initialEmployer: job.employer,
+      sourceUrl: job.originalSourceUrl,
+    });
+
+    job.requiredSkills = extracted.requiredSkills;
+    job.preferredSkills = extracted.preferredSkills;
+    job.normalizedRequirements = extracted.normalizedRequirements;
+    if (extracted.roleSummary && !job.roleSummary) job.roleSummary = extracted.roleSummary;
+    if (extracted.responsibilities?.length > 0 && (!job.responsibilities || job.responsibilities.length === 0)) {
+      job.responsibilities = extracted.responsibilities;
+    }
+    if (extracted.qualifications?.length > 0 && (!job.qualifications || job.qualifications.length === 0)) {
+      job.qualifications = extracted.qualifications;
+    }
+    job.extractionMode = extracted.extractionMode;
+    job.extractionLimitations = extracted.limitations;
+    job.extractionStatus = 'completed';
+
     await job.save();
     return job;
+  }
+
+  // --- Internal Platform API Fetchers ---
+
+  static async _fetchGreenhouse(boardToken, jobId, originalUrl) {
+    const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(boardToken)}/jobs/${encodeURIComponent(jobId)}`;
+    const res = await fetch(apiUrl, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Greenhouse API responded with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const cleanText = extractJobFromHtml(data.content || '', originalUrl).description;
+
+    return {
+      originalUrl,
+      resolvedUrl: originalUrl,
+      sourceType: 'greenhouse',
+      sourceVerificationState: 'verified_api',
+      title: data.title || 'Software Engineer',
+      employer: boardToken.charAt(0).toUpperCase() + boardToken.slice(1),
+      location: data.location?.name || '',
+      employmentType: 'Full-time',
+      description: cleanText,
+    };
+  }
+
+  static async _fetchLever(company, postingId, originalUrl) {
+    const apiUrl = `https://api.lever.co/v0/postings/${encodeURIComponent(company)}/${encodeURIComponent(postingId)}`;
+    const res = await fetch(apiUrl, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Lever API responded with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const listsText = (data.lists || []).map((l) => `${l.text}\n${l.content}`).join('\n');
+    const combinedHtml = `${data.description || ''}\n${listsText}`;
+    const cleanText = extractJobFromHtml(combinedHtml, originalUrl).description;
+
+    return {
+      originalUrl,
+      resolvedUrl: originalUrl,
+      sourceType: 'lever',
+      sourceVerificationState: 'verified_api',
+      title: data.text || 'Software Engineer',
+      employer: company.charAt(0).toUpperCase() + company.slice(1),
+      location: [data.categories?.location, data.categories?.commitment].filter(Boolean).join(' · '),
+      employmentType: data.categories?.commitment || 'Full-time',
+      description: cleanText,
+    };
   }
 }

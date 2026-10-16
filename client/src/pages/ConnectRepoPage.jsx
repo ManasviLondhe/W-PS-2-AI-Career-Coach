@@ -81,11 +81,41 @@ export function ConnectRepoPage() {
         <span>Back to Repositories</span>
       </Link>
 
-      <div style={{ marginBottom: '2rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title">Bring your code into the picture.</h1>
         <p className="page-subtitle">
           Connect a repository so SkillProof AI can inspect the work behind your skills with automatic change detection.
         </p>
+      </div>
+
+      {/* Feature 2 Banner */}
+      <div
+        style={{
+          background: 'var(--primary-subtle)',
+          border: '1px solid var(--primary-border)',
+          borderRadius: 'var(--radius-md)',
+          padding: '1rem 1.25rem',
+          marginBottom: '1.75rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }} />
+          <div>
+            <strong style={{ color: 'var(--primary)', fontSize: '0.9rem' }}>Feature 2: Multi-Repository Portfolio Analysis</strong>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+              Scan entire profiles, choose specific branches, filter files, and extract traceable skill proof across multiple repositories.
+            </p>
+          </div>
+        </div>
+        <Link to="/portfolio-analysis" className="btn btn-primary btn-sm" id="btn-goto-portfolio-analysis">
+          <span>Open Portfolio Analysis</span>
+          <ArrowRight size={13} />
+        </Link>
       </div>
 
       {error && (

@@ -14,6 +14,7 @@ import { SkillGapPage } from './pages/SkillGapPage.jsx';
 import { AssessmentHistoryPage } from './pages/AssessmentHistoryPage.jsx';
 import { ActivityTimelinePage } from './pages/ActivityTimelinePage.jsx';
 import { SettingsPage } from './pages/SettingsPage.jsx';
+import { GitHubAnalysisPage } from './pages/GitHubAnalysisPage.jsx';
 import { subscribeToEvents } from './services/sse.js';
 
 export function App() {
@@ -61,6 +62,37 @@ export function App() {
             </AppShell>
           }
         />
+
+        {/* Feature 2: GitHub Portfolio Analysis */}
+        <Route
+          path="/portfolio-analysis"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <GitHubAnalysisPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/portfolio-analysis/:scanId"
+          element={
+            <AppShell
+              latestEvent={latestEvent}
+              activeAssessment={activeContext.assessment}
+              activeJob={activeContext.job}
+              activeRepo={activeContext.repo}
+              onRefreshData={handleRefresh}
+            >
+              <GitHubAnalysisPage />
+            </AppShell>
+          }
+        />
+        <Route path="/portfolio" element={<Navigate to="/portfolio-analysis" replace />} />
 
         {/* Job Discovery & Requirements */}
         <Route
