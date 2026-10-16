@@ -59,8 +59,23 @@ export const assessmentApi = {
   listEvidence: (params) => api.get('/assessments/evidence/list', { params }),
 };
 
+export const githubApi = {
+  getUser: (username) => api.get(`/github/users/${username}`),
+  getUserRepos: (username, params) => api.get(`/github/users/${username}/repos`, { params }),
+  getRepoDetails: (owner, repo) => api.get(`/github/repos/${owner}/${repo}`),
+  getRepoBranches: (owner, repo) => api.get(`/github/repos/${owner}/${repo}/branches`),
+  getRepoTree: (owner, repo, params) => api.get(`/github/repos/${owner}/${repo}/tree`, { params }),
+  startScan: (payload) => api.post('/github/scan', payload),
+  getScanStatus: (scanId) => api.get(`/github/scan/${scanId}`),
+  getScanEvidence: (scanId) => api.get(`/github/scan/${scanId}/evidence`),
+  getRepoHistory: (owner, repo) => api.get(`/github/repos/${owner}/${repo}/history`),
+  listScans: (params) => api.get('/github/scans', { params }),
+  getScanById: (id) => api.get(`/github/scans/${id}`),
+};
+
 export const activityApi = {
   getActivity: (params) => api.get('/activity', { params }),
   getByAssessment: (assessmentId) => api.get(`/activity/${assessmentId}`),
   getHealth: () => api.get('/health'),
 };
+

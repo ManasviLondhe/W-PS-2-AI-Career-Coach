@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Bot,
 } from 'lucide-react';
+import { GithubIcon } from './GithubIcon.jsx';
 import { CommandPalette } from './CommandPalette.jsx';
 import { AiAssistantDrawer } from './AiAssistantDrawer.jsx';
 import { JobImportModal } from './JobImportModal.jsx';
@@ -79,6 +80,7 @@ export function AppShell({ children, latestEvent, activeAssessment, activeJob, a
   const getBreadcrumb = () => {
     const p = location.pathname;
     if (p === '/' || p === '/dashboard') return ['Workspace', 'Dashboard Overview'];
+    if (p.startsWith('/portfolio-analysis') || p.startsWith('/portfolio')) return ['Workspace', 'GitHub Portfolio Analysis'];
     if (p.startsWith('/jobs')) return ['Workspace', 'Job Explorer'];
     if (p === '/repositories/connect') return ['Workspace', 'Connect Repository'];
     if (p.startsWith('/repositories')) return ['Workspace', 'Repository Explorer'];
@@ -133,6 +135,10 @@ export function AppShell({ children, latestEvent, activeAssessment, activeJob, a
             <NavLink to="/dashboard" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} id="nav-item-dashboard">
               <LayoutDashboard size={17} />
               <span>Dashboard</span>
+            </NavLink>
+            <NavLink to="/portfolio-analysis" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} id="nav-item-portfolio-analysis">
+              <GithubIcon size={17} />
+              <span>Portfolio Analysis</span>
             </NavLink>
             <NavLink to="/jobs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} id="nav-item-jobs">
               <Briefcase size={17} />

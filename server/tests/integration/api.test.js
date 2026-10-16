@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { app } from '../../src/app.js';
 import { connectDatabase, disconnectDatabase } from '../../src/config/database.js';
 import { Job, Repository, Assessment } from '../../src/models/index.js';
+import { githubService } from '../../src/services/githubService.js';
 
 describe('SkillProof AI — Backend API Integration Tests', () => {
   let server;
   let baseUrl;
+  let origGetRepo;
+  let origGetCommit;
 
   before(async () => {
     await connectDatabase();
@@ -17,9 +20,30 @@ describe('SkillProof AI — Backend API Integration Tests', () => {
         resolve();
       });
     });
+
+    origGetRepo = githubService.getRepository;
+    origGetCommit = githubService.getLatestCommitSha;
+    githubService.getRepository = async (owner, repo) => ({
+      owner,
+      name: repo,
+      fullName: `${owner}/${repo}`,
+      url: `https://github.com/${owner}/${repo}`,
+      defaultBranch: 'master',
+      stars: 2500,
+      description: 'My first repo on GitHub!',
+      language: '',
+    });
+    githubService.getLatestCommitSha = async () => ({
+      sha: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d',
+      message: 'Initial commit',
+      author: 'The Octocat',
+      date: new Date().toISOString(),
+    });
   });
 
   after(async () => {
+    githubService.getRepository = origGetRepo;
+    githubService.getLatestCommitSha = origGetCommit;
     if (server) await new Promise((resolve) => server.close(resolve));
     await disconnectDatabase();
   });
