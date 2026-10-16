@@ -1,14 +1,14 @@
-import React from 'react';
-import { X, ExternalLink, Code2, ShieldAlert, Sparkles, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
+import { X, ExternalLink, Code2, Sparkles, HelpCircle } from 'lucide-react';
 import { Badge } from './Badge.jsx';
 
-export function SkillDetailDrawer({ skillResult, evidenceMap = {}, onClose, onSelectEvidence }) {
+export function SkillDetailDrawer({ skillResult, evidenceMap = {}, onClose }) {
   if (!skillResult) return null;
 
   const {
     skill,
     classification,
     status,
+    confidence,
     evidenceIds = [],
     explanation,
     limitations,
@@ -26,6 +26,11 @@ export function SkillDetailDrawer({ skillResult, evidenceMap = {}, onClose, onSe
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
               <Badge status={classification} type="classification" />
               <Badge status={status} />
+              {confidence && (
+                <span className={`badge ${confidence === 'high' ? 'badge-demonstrated' : confidence === 'medium' ? 'badge-partially_demonstrated' : 'badge-not_demonstrated'}`}>
+                  {confidence.toUpperCase()} CONFIDENCE
+                </span>
+              )}
             </div>
             <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
               {skill}
@@ -80,7 +85,7 @@ export function SkillDetailDrawer({ skillResult, evidenceMap = {}, onClose, onSe
               }}
             >
               <HelpCircle size={24} color="var(--text-muted)" style={{ margin: '0 auto 0.5rem' }} />
-              <p>No verifiable implementation of {skill} was detected in the examined repository files.</p>
+              <p>No verifiable implementation evidence was found in the analyzed repository scope.</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

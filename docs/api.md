@@ -46,18 +46,60 @@ Checks backend service readiness, MongoDB connectivity, background worker status
 ## 2. Jobs API
 
 ### `GET /api/jobs`
-List stored jobs with pagination and optional keyword search.
+List stored jobs with pagination, search by title/company/skills, and source filtering.
 
 **Query Parameters:**
 - `page` (optional, default: `1`)
 - `limit` (optional, default: `20`)
 - `search` (optional)
 - `skill` (optional)
+- `sourceType` (optional: `manual_url`, `greenhouse`, `lever`, `pasted`)
+
+### `POST /api/jobs/analyze-url`
+Safely fetches and analyzes a public job URL preview without immediate persistence. Enforces SSRF protection, size limits, and timeout.
+
+**Request Body:**
+```json
+{
+  "url": "https://boards.greenhouse.io/stripe/jobs/12345"
+}
+```
+
+### `POST /api/jobs/analyze-text`
+Analyzes user-provided job description text and extracts structured requirements.
+
+**Request Body:**
+```json
+{
+  "text": "Full job description text...",
+  "title": "Backend Engineer",
+  "employer": "Stripe"
+}
+```
 
 ### `POST /api/jobs/import`
-Import a job via URL or pasted description. Uses SSRF protection to block private IP addresses and loopback URLs.
+Import and persist a job via URL or confirmed review payload. Uses SSRF protection.
 
-**Request Body (Pasted Description):**
+**Request Body (Pasted Description / Confirmed Review):**
+```json
+{
+  "type": "pasted",
+  "title": "Backend Engineer",
+  "employer": "Stripe",
+  "location": "San Francisco, CA",
+  "employmentType": "Full-time",
+  "description": "Looking for engineers with Java, SQL, and REST APIs experience...",
+  "sourceUrl": "https://stripe.com/jobs/123",
+  "requiredSkills": ["Java", "SQL"],
+  "preferredSkills": ["Docker"]
+}
+```
+
+### `PUT /api/jobs/:id`
+Update an existing job requirement (title, employer, location, employment type, or skills).
+
+### `POST /api/jobs/:id/retry-analysis`
+Re-extract requirements and skills from stored job description using AI / rule engine.
 ```json
 {
   "title": "Backend Engineer",

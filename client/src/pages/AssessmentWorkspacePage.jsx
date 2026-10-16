@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { assessmentApi } from '../services/api.js';
 import { CoverageGauge } from '../components/CoverageGauge.jsx';
@@ -6,20 +6,15 @@ import { Badge } from '../components/Badge.jsx';
 import { SkillDetailDrawer } from '../components/SkillDetailDrawer.jsx';
 import { EvidenceModal } from '../components/EvidenceModal.jsx';
 import {
-  ShieldCheck,
   ArrowLeft,
   GitCommit,
-  GitBranch,
-  Calendar,
   Sparkles,
   ExternalLink,
   Search,
-  Filter,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
   History,
-  FileCode2,
   Loader2,
   ArrowUpDown,
   Briefcase,
@@ -63,7 +58,8 @@ export function AssessmentWorkspacePage() {
   if (!assessment) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-        <h2>Assessment Not Found</h2>
+        <h2>{error ? 'Unable to Load Assessment' : 'Assessment Not Found'}</h2>
+        {error && <p style={{ color: 'var(--danger)', marginTop: '0.75rem' }}>{error}</p>}
         <Link to="/dashboard" className="btn btn-secondary" style={{ marginTop: '1rem' }}>
           Back to Dashboard
         </Link>
@@ -344,7 +340,21 @@ export function AssessmentWorkspacePage() {
                       <Badge status={sr.classification} type="classification" />
                     </td>
                     <td>
-                      <Badge status={sr.status} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
+                          <Badge status={sr.status} />
+                          {sr.confidence && (
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700 }}>
+                              {sr.confidence.toUpperCase()} CONFIDENCE
+                            </span>
+                          )}
+                        </div>
+                        {sr.confidence && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            Confidence: {sr.confidence}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       {evidences.length > 0 ? (
@@ -388,7 +398,6 @@ export function AssessmentWorkspacePage() {
         skillResult={selectedSkill}
         evidenceMap={evidenceMap}
         onClose={() => setSelectedSkill(null)}
-        onSelectEvidence={(ev) => setSelectedEvidence(ev)}
       />
 
       {/* Evidence Modal */}

@@ -151,7 +151,7 @@ export class EvidenceExtractor {
           /@(RestController|Service|Repository|SpringBootApplication|GetMapping|PostMapping)\b/.test(line) ||
           /public\s+class\s+\w+/.test(line)
         ) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 8);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -190,7 +190,7 @@ export class EvidenceExtractor {
           /\b(useState|useEffect|useContext|useReducer|useCallback|useMemo)\s*\(/.test(line) ||
           /(return\s*\(\s*<[\w]+|<\w+[^>]*>)/.test(line)
         ) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 7);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -230,7 +230,7 @@ export class EvidenceExtractor {
           /\b(express\(\)|app\.(get|post|put|delete|use)\s*\(|router\.(get|post|put|delete)\s*\()/.test(line) ||
           /require\(['"](http|fs|path|crypto)['"]\)|from\s+['"](node:[\w]+|http|express)['"]/.test(line)
         ) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -266,7 +266,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/async\s+function|const\s+\w+\s*=\s*async|export\s+(default\s+)?(function|class|const)/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -302,7 +302,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/\b(interface\s+\w+|type\s+\w+\s*=|as\s+[A-Z]\w+|<[A-Z]\w+>\()/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -338,7 +338,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/(def\s+\w+\s*\(|class\s+\w+(\(.*\))?:|@app\.(route|get|post)|import\s+fastapi|from\s+django)/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -376,7 +376,7 @@ export class EvidenceExtractor {
         if (
           /new\s+mongoose\.Schema|mongoose\.model\s*\(|\.(find|findById|findOne|aggregate|updateOne)\s*\(/.test(line)
         ) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -413,7 +413,7 @@ export class EvidenceExtractor {
           /\b(app|router)\.(get|post|put|delete|patch)\s*\(\s*['"]\/(api\/)?/.test(line) ||
           /res\.status\(\d+\)\.json\(|@GetMapping|@PostMapping|@app\.(get|post)/.test(line)
         ) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -455,7 +455,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/\b(describe\s*\(|it\s*\(|test\s*\(|expect\s*\(|assert|@Test)\b/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -491,7 +491,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/(jobs:|runs-on:|steps:|uses:\s*actions\/)/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 8);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -527,7 +527,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (/\b(FROM\s+|WORKDIR\s+|COPY\s+|RUN\s+|CMD\s+|services:)/.test(line)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 6);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -594,7 +594,7 @@ export class EvidenceExtractor {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (line.toLowerCase().includes(search)) {
-          const start = Math.max(1, i);
+          const start = i + 1;
           const end = Math.min(lines.length, i + 5);
           const excerpt = lines.slice(start - 1, end).join('\n');
 
@@ -632,13 +632,22 @@ export class EvidenceExtractor {
     explanation,
     confidence,
   }) {
-    const evidenceId = `ev_${crypto.randomBytes(6).toString('hex')}`;
-    const sourcePermalink = `https://github.com/${owner}/${repo}/blob/${commitSha}/${filePath}#L${lineRange.start}-L${lineRange.end}`;
+    const normalizedPath = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const evidenceId = `ev_${crypto
+      .createHash('sha256')
+      .update([owner, repo, commitSha, normalizedPath, lineRange.start, lineRange.end, skill, evidenceType].join('|'))
+      .digest('hex')
+      .slice(0, 24)}`;
+    const encodedPath = normalizedPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const sourcePermalink = `https://github.com/${owner}/${repo}/blob/${commitSha}/${encodedPath}#L${lineRange.start}-L${lineRange.end}`;
 
     return {
       evidenceId,
       commitSha,
-      filePath,
+      filePath: normalizedPath,
       lineRange,
       skill,
       evidenceType,
